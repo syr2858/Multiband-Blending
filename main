@@ -1,0 +1,78 @@
+import cv2
+import numpy as np
+import matplotlib.pyplot as plt
+
+#apple image를 불러옴
+Apple = cv2.imread('C:/Users/syr28/Desktop/image/burt_apple.png')
+#Orange image를 불러옴
+Orange = cv2.imread('C:/Users/syr28/Desktop/image/burt_orange.png')
+#Mask image를 불러옴
+Mask = cv2.imread('C:/Users/syr28/Desktop/image/burt_mask.png')
+
+# Apple, Orange, Mask를 잘 불러왔는지 확인할 수 있는 if문
+# Apple, Orange, Mask가 호출되지 않았을 경우에는 코드가 돌아가지 않는다.
+if Apple is not None and Orange is not None and Mask is not None:
+
+    #모든 이미지를 float type으로 변환시켜 준다.
+    #alpha blending을 할 시 float type으로 해주기 위해서 미리 변환
+    apple = Apple.astype(float)
+    orange = Orange.astype(float)
+    mask = Mask.astype(float)
+
+    #apple image에 대한 Gaussian Pyramid를 생성한다
+    G = apple.copy() #float type의 apple image를 G에 넣어준다.
+    gpA = [G] #gpA는 apple image의 가우시안 피라미드를 담을 것이다. (gaussian pyramid Apple을 줄여서 gpA)
+    for i in range(6): #범위 설정
+        G = cv2.pyrDown(G) #점점 작아지는 피라미드를 생성한다.
+        gpA.append(G) #G의 값을 gpA에 넣어준다.
+
+    #orange image에 대한 Gaussian Pyramid를 생성한다
+    G = orange.copy()
+    gpO = [G] #gpO 는 orange의 Gausian pyramid를 담는다 (gaussian pyramid Orange = gpO)
+    for i in range(6):
+        G = cv2.pyrDown(G)
+        gpO.append(G)
+
+    # mask image에 대한 Gaussian Pyramid를 생성한다
+    G = mask.copy()
+    gpM = [G] #gpM 는 mask의 Gausian pyramid를 담는다 (gaussian pyramid Mask = gpM)
+    for i in range(6):
+        G = cv2.pyrDown(G)
+        gpM.append(G)
+
+    # apple image에 대한 Laplacian Pyramid를 생성한다
+    lpA = [gpA[5]]  #가우시안 피라미드의 가장 마지막 항부터 시작한다. lpA = laplacian pyramid Apple
+    for i in range(5, 0, -1):
+        GE = cv2.pyrUp(gpA[i])  # i번째 추가된 Gaussian Image를 크게 만든다.
+        temp = cv2.resize(gpA[i - 1], (GE.shape[:2][1], GE.shape[:2][0]))  #i-1과 i번째 이미지의 크기를 동일하게 만들어준다.
+        L = cv2.subtract(temp, GE)  # i-1번째 이미지에서 i번째로 upscale한 이미지를 빼어준다 = 라플라시안 피라미드
+        lpA.append(L) #lpA에 L값을 집어넣는다.
+
+    # orange image에 대한 Laplacian Pyramid를 생성한다
+    lpO = [gpO[5]]  #lpO = laplacian pyramid Orange
+    for i in range(5, 0, -1):
+        GE = cv2.pyrUp(gpO[i])
+        temp = cv2.resize(gpO[i - 1], (GE.shape[:2][1], GE.shape[:2][0]))
+        L = cv2.subtract(temp, GE)
+        lpO.append(L)
+
+     #apple image와 orange image를 blending한다.
+    blend = [] #blending한 이미지를 담을 array
+    for la, lo, gm in zip(lpA, lpO, gpM): #3가지 피라미드를 한번에 묶어야 하므로 in zip함수를 이용한다
+        #la, lo, gm의 크기가 같도록 설정한다.
+        lo = cv2.resize(lo, (la.shape[:2][1], la.shape[:2][0])) #lo의 크기를 la와 같도록 설정한다
+        gm = cv2.resize(gm, (la.shape[:2][1], la.shape[:2][0])) #gm의 크기를 la와 같도록 설정한다
+        C = ((255 - gm) * la + gm * lo) / 255 #255인 면에는 la가, 0인 면에는 lo가 나오도록 한다.
+        blend.append(C) #C값을 blend에 집어넣는다.
+
+    #blending한 pyramid를 reconstruction한다.
+    recons = blend[0]
+    for i in range (1,6):
+        recons = cv2.pyrUp(recons) #i-1번쨰 이미지 크기를 키운다
+        blend[i] = cv2.resize(blend[i], (recons.shape[:2][1], recons.shape[:2][0])) #i-1번쨰 이미지 크기가 i번째 이미지 크기와 같아지도록 설정한다
+        recons = cv2.add(blend[i] , recons) #i번쨰 이미지와 i-1번쨰 이미지를 모두 더한다.
+
+    recons = recons.astype(np.uint8) #float라 생겼던 오류를 해결하기 위해 float type을 uint8 type으로 바꾸어준다.
+
+    cv2.imshow('blending', recons) #blending된 이미지를 출력한다.
+    cv2.waitKey(1000)
